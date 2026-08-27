@@ -1,0 +1,50 @@
+image:
+  repository: wlanboy/fail
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+deploymentName: fail
+
+# Must be >= chaos.sigtermDelay for the SIGTERM_DELAY scenario to complete
+# gracefully; set it lower than chaos.sigtermDelay to test what happens when
+# the grace period is undersized (kubelet SIGKILLs the process).
+terminationGracePeriodSeconds: 35
+
+service:
+  name: fail-svc
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+chaos:
+  interval: 300              # Sekunden zwischen Chaos-Zyklen
+  startupDelay: 10           # Initialer Puffer beim Start
+  memoryChunkSize: 1000000   # Bytes pro Memory-Chunk (1MB)
+  diskFillSizeMB: 110        # MB für Disk-Fill
+  cpuBurnThreads: 2          # Anzahl paralleler CPU-Threads
+  cpuBurnDuration: 120       # Sekunden CPU-Burn Dauer (max CHAOS_INTERVAL / 2)
+  slowResponseDelay: 5       # Sekunden künstliche Verzögerung pro Request (SLOW_RESPONSE)
+  sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
+  readinessFlapInterval: 5   # Sekunden zwischen Readiness-Toggles (READINESS_FLAP)
+
+istio:
+  gatewayName: failgo-gw
+  gatewayNamespace: "istio-ingress"
+  hosts: 
+    - fail.tp.lan
+    - fail.gmk.lan
+    - fail.localhost
+  tls:
+    enabled: true
+    secretName: fail-tls
+
+certManager:
+  enabled: true
+  issuerRef:
+    kind: ClusterIssuer
+    name: "local-ca-issuer"
+  dnsNames:
+    - fail.tp.lan
+    - fail.gmk.lan
+    - fail.localhost
