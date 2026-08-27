@@ -1,0 +1,11 @@
+.git/
+.github/
+.vscode/
+.idea/
+fail-chart/
+*.md
+LICENSE
+randomfail-golang
+*.exe
+*.test
+*.out

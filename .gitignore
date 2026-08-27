@@ -1,0 +1,12 @@
+randomfail-golang
+
+# Build artifacts
+*.exe
+*.test
+*.out
+/bin/
+/out/
+
+# Editor/IDE
+.vscode/
+.idea/
