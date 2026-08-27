@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.deploymentName }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.deploymentName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.deploymentName }}
+        sidecar.istio.io/inject: "true"
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: {{ .Values.deploymentName }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: CHAOS_INTERVAL
+              value: {{ .Values.chaos.interval | int | quote }}
+            - name: CHAOS_STARTUP_DELAY
+              value: {{ .Values.chaos.startupDelay | int | quote }}
+            - name: MEMORY_CHUNK_SIZE
+              value: {{ .Values.chaos.memoryChunkSize | int | quote }}
+            - name: DISK_FILL_SIZE_MB
+              value: {{ .Values.chaos.diskFillSizeMB | int | quote }}
+            - name: CPU_BURN_THREADS
+              value: {{ .Values.chaos.cpuBurnThreads | int | quote }}
+            - name: CPU_BURN_DURATION
+              value: {{ .Values.chaos.cpuBurnDuration | int | quote }}
+            - name: SLOW_RESPONSE_DELAY
+              value: {{ .Values.chaos.slowResponseDelay | int | quote }}
+            - name: SIGTERM_DELAY
+              value: {{ .Values.chaos.sigtermDelay | int | quote }}
+            - name: READINESS_FLAP_INTERVAL
+              value: {{ .Values.chaos.readinessFlapInterval | int | quote }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"  # Bei OOM_PRESSURE wird der Pod hier gekillt
+              cpu: "200m"     # Bei CPU_SPIKE siehst du hier Throttling
+
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12  # 60s Fenster für langsame Starts
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 10 # Etwas mehr Puffer für den App-Start
+            periodSeconds: 5
+            timeoutSeconds: 2 
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2 
+            failureThreshold: 3
