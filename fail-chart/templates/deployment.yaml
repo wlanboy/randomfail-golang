@@ -28,6 +28,8 @@ spec:
             capabilities:
               drop: ["ALL"]
           env:
+            - name: CHAOS_ENABLED
+              value: {{ .Values.chaos.enabled | quote }}
             - name: CHAOS_INTERVAL
               value: {{ .Values.chaos.interval | int | quote }}
             - name: CHAOS_STARTUP_DELAY

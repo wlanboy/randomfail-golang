@@ -38,9 +38,29 @@ func TestEnvSecondsParsed(t *testing.T) {
 	}
 }
 
+func TestEnvBoolDefault(t *testing.T) {
+	if v := envBool("RF_TEST_UNSET_BOOL", true); v != true {
+		t.Errorf("envBool() with unset var = %v, want true", v)
+	}
+}
+
+func TestEnvBoolParsed(t *testing.T) {
+	t.Setenv("RF_TEST_BOOL", "false")
+	if v := envBool("RF_TEST_BOOL", true); v != false {
+		t.Errorf("envBool() = %v, want false", v)
+	}
+}
+
+func TestEnvBoolInvalidFallsBackToDefault(t *testing.T) {
+	t.Setenv("RF_TEST_BOOL", "not-a-bool")
+	if v := envBool("RF_TEST_BOOL", true); v != true {
+		t.Errorf("envBool() with invalid value = %v, want default true", v)
+	}
+}
+
 func TestLoadConfigDefaults(t *testing.T) {
 	for _, name := range []string{
-		"CHAOS_INTERVAL", "CHAOS_STARTUP_DELAY", "MEMORY_CHUNK_SIZE",
+		"CHAOS_ENABLED", "CHAOS_INTERVAL", "CHAOS_STARTUP_DELAY", "MEMORY_CHUNK_SIZE",
 		"CPU_BURN_THREADS", "CPU_BURN_DURATION", "SLOW_RESPONSE_DELAY",
 		"SIGTERM_DELAY", "READINESS_FLAP_INTERVAL",
 	} {
@@ -50,6 +70,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	cfg := loadConfig()
 
 	want := Config{
+		ChaosEnabled:          true,
 		ChaosInterval:         300 * time.Second,
 		ChaosStartupDelay:     10 * time.Second,
 		MemoryChunkSize:       1_000_000,
@@ -65,6 +86,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 }
 
 func TestLoadConfigFromEnv(t *testing.T) {
+	t.Setenv("CHAOS_ENABLED", "false")
 	t.Setenv("CHAOS_INTERVAL", "60")
 	t.Setenv("CHAOS_STARTUP_DELAY", "1")
 	t.Setenv("MEMORY_CHUNK_SIZE", "2048")
@@ -77,6 +99,7 @@ func TestLoadConfigFromEnv(t *testing.T) {
 	cfg := loadConfig()
 
 	want := Config{
+		ChaosEnabled:          false,
 		ChaosInterval:         60 * time.Second,
 		ChaosStartupDelay:     1 * time.Second,
 		MemoryChunkSize:       2048,

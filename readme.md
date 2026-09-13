@@ -135,6 +135,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 
 | Variable | Default | Beschreibung |
 |---|---|---|
+| `CHAOS_ENABLED` | `true` | Automatischen Chaos-Zyklus aktivieren. Bei `false` startet der Service in einem reinen Init-Modus: `/healthz` und `/readyz` bleiben dauerhaft grün, kein Szenario wird automatisch ausgelöst. Manuelle `/chaos/*`-Endpunkte funktionieren unabhängig davon weiter. |
 | `CHAOS_INTERVAL` | `300` | Sekunden zwischen automatischen Chaos-Zyklen |
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |
@@ -177,6 +178,14 @@ docker build -t fail .
 docker run -p 8080:8080 \
   -e CHAOS_INTERVAL=60 \
   -e SLOW_RESPONSE_DELAY=3 \
+  fail
+```
+
+Init-Modus (kein automatisches Chaos beim Start, z. B. für Smoke-Tests oder manuell gesteuerte Demos):
+
+```bash
+docker run -p 8080:8080 \
+  -e CHAOS_ENABLED=false \
   fail
 ```
 

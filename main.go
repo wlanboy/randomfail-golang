@@ -21,8 +21,8 @@ func main() {
 		Handler: newMux(s, cfg),
 	}
 
-	log.Printf("randomfail listening on %s (chaosInterval=%s, startupDelay=%s)",
-		srv.Addr, cfg.ChaosInterval, cfg.ChaosStartupDelay)
+	log.Printf("randomfail listening on %s (chaosEnabled=%t, chaosInterval=%s, startupDelay=%s)",
+		srv.Addr, cfg.ChaosEnabled, cfg.ChaosInterval, cfg.ChaosStartupDelay)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 // background goroutines (OOM growth, CPU burn, readiness flap) finish fast.
 func testCfg() Config {
 	return Config{
+		ChaosEnabled:          true,
 		ChaosInterval:         time.Millisecond,
 		ChaosStartupDelay:     0,
 		MemoryChunkSize:       16,
@@ -81,6 +82,30 @@ func TestActivateScenarioResetsPreviousState(t *testing.T) {
 	if !s.isHealthy() {
 		t.Error("isHealthy() = false after activating STABLE, want true")
 	}
+	if got := s.getScenario(); got != ScenarioStable {
+		t.Errorf("getScenario() = %s, want %s", got, ScenarioStable)
+	}
+}
+
+func TestRunChaosCycleDisabledReturnsImmediately(t *testing.T) {
+	cfg := testCfg()
+	cfg.ChaosEnabled = false
+	cfg.ChaosStartupDelay = time.Hour // would block forever if not skipped
+	s := newState()
+	defer s.reset()
+
+	done := make(chan struct{})
+	go func() {
+		runChaosCycle(s, cfg)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runChaosCycle() did not return promptly with CHAOS_ENABLED=false")
+	}
+
 	if got := s.getScenario(); got != ScenarioStable {
 		t.Errorf("getScenario() = %s, want %s", got, ScenarioStable)
 	}

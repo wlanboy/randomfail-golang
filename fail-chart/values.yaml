@@ -18,6 +18,7 @@ service:
   targetPort: 8080
 
 chaos:
+  enabled: true              # Automatischen Chaos-Zyklus aktivieren (false = nur manuelle /chaos/*-Endpunkte)
   interval: 300              # Sekunden zwischen Chaos-Zyklen
   startupDelay: 10           # Initialer Puffer beim Start
   memoryChunkSize: 1000000   # Bytes pro Memory-Chunk (1MB)

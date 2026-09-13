@@ -8,6 +8,7 @@ import (
 
 // Config holds all tunables, sourced from environment variables (see readme.md).
 type Config struct {
+	ChaosEnabled          bool
 	ChaosInterval         time.Duration
 	ChaosStartupDelay     time.Duration
 	MemoryChunkSize       int
@@ -20,6 +21,7 @@ type Config struct {
 
 func loadConfig() Config {
 	return Config{
+		ChaosEnabled:          envBool("CHAOS_ENABLED", true),
 		ChaosInterval:         envSeconds("CHAOS_INTERVAL", 300),
 		ChaosStartupDelay:     envSeconds("CHAOS_STARTUP_DELAY", 10),
 		MemoryChunkSize:       envInt("MEMORY_CHUNK_SIZE", 1_000_000),
@@ -45,4 +47,16 @@ func envInt(name string, def int) int {
 
 func envSeconds(name string, defSeconds int) time.Duration {
 	return time.Duration(envInt(name, defSeconds)) * time.Second
+}
+
+func envBool(name string, def bool) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }

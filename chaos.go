@@ -22,8 +22,14 @@ var autoScenarios = []Scenario{
 
 // runChaosCycle waits for the configured startup delay, then repeatedly
 // resets state and activates a randomly chosen scenario every
-// CHAOS_INTERVAL seconds.
+// CHAOS_INTERVAL seconds. If CHAOS_ENABLED is false, it returns immediately
+// and never runs the automatic cycle; manual /chaos/* endpoints still work.
 func runChaosCycle(s *State, cfg Config) {
+	if !cfg.ChaosEnabled {
+		log.Println("chaos cycle: CHAOS_ENABLED=false, automatic chaos disabled")
+		return
+	}
+
 	time.Sleep(cfg.ChaosStartupDelay)
 
 	for {
