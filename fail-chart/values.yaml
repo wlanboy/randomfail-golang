@@ -22,12 +22,11 @@ chaos:
   interval: 300              # Sekunden zwischen Chaos-Zyklen
   startupDelay: 10           # Initialer Puffer beim Start
   memoryChunkSize: 1000000   # Bytes pro Memory-Chunk (1MB)
-  diskFillSizeMB: 110        # MB für Disk-Fill
   cpuBurnThreads: 2          # Anzahl paralleler CPU-Threads
   cpuBurnDuration: 120       # Sekunden CPU-Burn Dauer (max CHAOS_INTERVAL / 2)
   slowResponseDelay: 5       # Sekunden künstliche Verzögerung pro Request (SLOW_RESPONSE)
   sigtermDelay: 30           # Sekunden bis zum sauberen Shutdown nach SIGTERM
-  readinessFlapInterval: 5   # Sekunden zwischen Readiness-Toggles (READINESS_FLAP)
+  readinessFlapInterval: 20  # Sekunden zwischen Readiness-Toggles (READINESS_FLAP), muss > readinessProbe periodSeconds × failureThreshold (15s) sein
 
 istio:
   gatewayName: failgo-gw
