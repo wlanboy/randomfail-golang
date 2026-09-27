@@ -29,7 +29,7 @@ func loadConfig() Config {
 		CPUBurnDuration:       envSeconds("CPU_BURN_DURATION", 120),
 		SlowResponseDelay:     envSeconds("SLOW_RESPONSE_DELAY", 5),
 		SigtermDelay:          envSeconds("SIGTERM_DELAY", 30),
-		ReadinessFlapInterval: envSeconds("READINESS_FLAP_INTERVAL", 5),
+		ReadinessFlapInterval: envSeconds("READINESS_FLAP_INTERVAL", 20),
 	}
 }
 

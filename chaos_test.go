@@ -6,7 +6,8 @@ import (
 )
 
 // testCfg keeps every timing-related knob short so tests that trigger
-// background goroutines (OOM growth, CPU burn, readiness flap) finish fast.
+// background goroutines (OOM growth, readiness flap) finish fast. CPU burn
+// runs for an hour so the scenario can't expire mid-test; reset() stops it.
 func testCfg() Config {
 	return Config{
 		ChaosEnabled:          true,
@@ -14,7 +15,7 @@ func testCfg() Config {
 		ChaosStartupDelay:     0,
 		MemoryChunkSize:       16,
 		CPUBurnThreads:        1,
-		CPUBurnDuration:       time.Millisecond,
+		CPUBurnDuration:       time.Hour,
 		SlowResponseDelay:     time.Millisecond,
 		SigtermDelay:          time.Millisecond,
 		ReadinessFlapInterval: time.Hour,
@@ -118,5 +119,23 @@ func TestAutoScenariosDoesNotRepeatEntries(t *testing.T) {
 			t.Errorf("autoScenarios contains duplicate entry %s", sc)
 		}
 		seen[sc] = true
+	}
+}
+
+func TestActivateScenarioIgnoredDuringShutdown(t *testing.T) {
+	cfg := testCfg()
+	s := newState()
+	defer s.reset()
+	s.beginShutdown()
+
+	// CRASH would call os.Exit(1) if it were not skipped during shutdown.
+	activateScenario(s, cfg, ScenarioCrash)
+	activateScenario(s, cfg, ScenarioSlowResponse)
+
+	if s.isSlowResponse() {
+		t.Error("isSlowResponse() = true, want scenario ignored during shutdown")
+	}
+	if s.isHealthy() || s.isReady() {
+		t.Error("probes report healthy/ready during shutdown, want both false")
 	}
 }

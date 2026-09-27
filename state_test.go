@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -201,4 +202,63 @@ func TestStartFlapIsIdempotent(t *testing.T) {
 		t.Error("isReady() after reset = false, want true")
 	}
 	_ = firstCancel
+}
+
+func TestShutdownOverridesProbeState(t *testing.T) {
+	s := newState()
+	s.beginShutdown()
+
+	if s.isHealthy() {
+		t.Error("isHealthy() during shutdown = true, want false")
+	}
+	if s.isReady() {
+		t.Error("isReady() during shutdown = true, want false")
+	}
+
+	// Neither reset() nor manual toggles may revive the probes.
+	s.reset()
+	s.setHealthy(true)
+	s.setReady(true)
+	if s.isHealthy() || s.isReady() {
+		t.Error("probes revived after reset during shutdown, want unhealthy/not ready")
+	}
+}
+
+func TestCPUBurnFallsBackToStableAfterDuration(t *testing.T) {
+	s := newState()
+	s.startCPUBurn(1, 10*time.Millisecond)
+	if got := s.getScenario(); got != ScenarioCPUBurn {
+		t.Fatalf("getScenario() = %s, want %s", got, ScenarioCPUBurn)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for s.getScenario() != ScenarioStable {
+		if time.Now().After(deadline) {
+			t.Fatalf("getScenario() = %s after burn duration, want %s", s.getScenario(), ScenarioStable)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestExpiredCPUBurnDoesNotResetNewerBurn(t *testing.T) {
+	s := newState()
+	defer s.reset()
+	s.startCPUBurn(1, 10*time.Millisecond)
+	s.startCPUBurn(1, time.Hour)
+
+	time.Sleep(50 * time.Millisecond)
+	if got := s.getScenario(); got != ScenarioCPUBurn {
+		t.Errorf("getScenario() = %s, want %s (newer burn still running)", got, ScenarioCPUBurn)
+	}
+}
+
+func TestOOMGrowthStopsAppendingAfterReset(t *testing.T) {
+	s := newState()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	s.appendMemChunkIfActive(ctx, make([]byte, 10))
+	if b := s.memBallastBytes(); b != 0 {
+		t.Errorf("memBallastBytes() = %d after cancelled append, want 0", b)
+	}
 }

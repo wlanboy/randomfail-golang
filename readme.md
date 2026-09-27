@@ -49,7 +49,7 @@ Der Service setzt seinen internen Health-Status auf `unhealthy`. Der `/healthz`-
 ---
 
 ### CRASH – Harter Prozessabsturz
-Der Prozess beendet sich sofort mit `os._exit(1)` ohne jegliches Cleanup. Simuliert einen Segfault oder eine unkontrollierte Ausnahme.
+Der Prozess beendet sich sofort mit `os.Exit(1)` ohne jegliches Cleanup. Simuliert einen Segfault oder eine unkontrollierte Ausnahme.
 
 **Kubernetes-Reaktion:**
 - Pod-Status wechselt zu `Error` (Exit Code 1)
@@ -77,13 +77,15 @@ Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling
 - Kubernetes wartet maximal `terminationGracePeriodSeconds` auf den Prozess
 - Nach Ablauf der Frist: SIGKILL (harter Abbruch)
 - Testet, ob `terminationGracePeriodSeconds` ausreichend dimensioniert ist
-- Während der Wartezeit werden Health-Probes auf `unhealthy` gesetzt, um Traffic-Routing zu stoppen
+- Während der Wartezeit werden Health-Probes auf `unhealthy` gesetzt, um Traffic-Routing zu stoppen. Weder der Chaos-Zyklus noch `/chaos/reset` können sie in dieser Phase wieder auf grün setzen
 - Sichtbar in: `kubectl describe pod` → `Terminating` Status
 
 ---
 
 ### READINESS_FLAP – Intermittierende Readiness
 Der Pod wechselt in konfigurierbarem Takt zwischen `Ready` und `NotReady`, ohne sich zu stabilisieren. Simuliert instabile Datenbankverbindungen, Race Conditions beim Startup oder kurze Überlastzustände. Die Liveness-Probe bleibt dabei unberührt – der Pod wird nicht neu gestartet.
+
+**Wichtig:** `READINESS_FLAP_INTERVAL` muss größer sein als `periodSeconds × failureThreshold` der Readiness-Probe (im Chart 5 s × 3 = 15 s). Bei kürzerem Takt schlagen nie genug Proben hintereinander fehl, und der Pod bleibt dauerhaft `Ready`.
 
 **Kubernetes-Reaktion:**
 - Pod wird wiederholt aus den Service-Endpoints entfernt und wieder hinzugefügt
@@ -131,7 +133,7 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 
 ## Konfiguration
 
-Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfail-chart/values.yaml`):
+Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `fail-chart/values.yaml`):
 
 | Variable | Default | Beschreibung |
 |---|---|---|
@@ -140,10 +142,10 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `randomfa
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |
 | `CPU_BURN_THREADS` | `2` | Anzahl paralleler Threads im CPU_BURN-Szenario |
-| `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2) |
+| `CPU_BURN_DURATION` | `120` | Sekunden Dauer des CPU-Burns (empfohlen: max. CHAOS_INTERVAL / 2). Danach fällt das Szenario auf `STABLE` zurück |
 | `SLOW_RESPONSE_DELAY` | `5` | Sekunden künstliche Verzögerung pro Request im SLOW_RESPONSE-Szenario |
 | `SIGTERM_DELAY` | `30` | Sekunden Wartezeit nach SIGTERM vor dem Prozess-Exit |
-| `READINESS_FLAP_INTERVAL` | `5` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario |
+| `READINESS_FLAP_INTERVAL` | `20` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario (muss > `periodSeconds × failureThreshold` der Readiness-Probe sein) |
 
 ---
 

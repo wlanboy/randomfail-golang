@@ -78,7 +78,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 		CPUBurnDuration:       120 * time.Second,
 		SlowResponseDelay:     5 * time.Second,
 		SigtermDelay:          30 * time.Second,
-		ReadinessFlapInterval: 5 * time.Second,
+		ReadinessFlapInterval: 20 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("loadConfig() = %+v, want %+v", cfg, want)

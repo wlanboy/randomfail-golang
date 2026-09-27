@@ -93,6 +93,13 @@ func TestHandleStatus(t *testing.T) {
 	if got := mem["ballastBytes"]; got != float64(100) {
 		t.Errorf("ballastBytes = %v, want 100", got)
 	}
+	conf, ok := body["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("config field missing or wrong type: %v", body["config"])
+	}
+	if got := conf["chaosEnabled"]; got != true {
+		t.Errorf("config.chaosEnabled = %v, want true", got)
+	}
 }
 
 func TestHandleChaosReset(t *testing.T) {

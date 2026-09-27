@@ -32,6 +32,11 @@ type State struct {
 	oomCancel  context.CancelFunc
 	cpuCancel  context.CancelFunc
 	flapCancel context.CancelFunc
+	cpuGen     uint64 // identifies the current CPU burn so a stale timeout can't reset a newer one
+
+	// shuttingDown is set once SIGTERM arrives; from then on the probes
+	// report unhealthy/not-ready regardless of reset() or manual toggles.
+	shuttingDown bool
 
 	rootRequests uint64 // atomic counter for "/" 500-every-third-request behavior
 	startTime    time.Time
@@ -85,7 +90,7 @@ func (s *State) getScenario() Scenario {
 func (s *State) isHealthy() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.healthy
+	return s.healthy && !s.shuttingDown
 }
 
 func (s *State) setHealthy(v bool) {
@@ -105,7 +110,20 @@ func (s *State) toggleHealthy() bool {
 func (s *State) isReady() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.ready
+	return s.ready && !s.shuttingDown
+}
+
+// beginShutdown permanently marks the service unhealthy and not ready.
+func (s *State) beginShutdown() {
+	s.mu.Lock()
+	s.shuttingDown = true
+	s.mu.Unlock()
+}
+
+func (s *State) isShuttingDown() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shuttingDown
 }
 
 func (s *State) setReady(v bool) {
@@ -142,6 +160,16 @@ func (s *State) appendMemChunk(chunk []byte) {
 	s.mu.Unlock()
 }
 
+// appendMemChunkIfActive appends chunk only while ctx is still live, so a
+// growth tick racing with reset() can't leave ballast behind.
+func (s *State) appendMemChunkIfActive(ctx context.Context, chunk []byte) {
+	s.mu.Lock()
+	if ctx.Err() == nil {
+		s.memBallast = append(s.memBallast, chunk)
+	}
+	s.mu.Unlock()
+}
+
 // startOOMGrowth starts (if not already running) a goroutine that appends one
 // memory chunk per second, simulating gradual memory exhaustion.
 func (s *State) startOOMGrowth(chunkSize int) {
@@ -167,14 +195,15 @@ func (s *State) startOOMGrowth(chunkSize int) {
 				for i := range chunk {
 					chunk[i] = 1
 				}
-				s.appendMemChunk(chunk)
+				s.appendMemChunkIfActive(ctx, chunk)
 			}
 		}
 	}()
 }
 
-// startCPUBurn spins up n goroutines that saturate a CPU core each for the
-// given duration (or until reset cancels them).
+// startCPUBurn sets the CPU_BURN scenario and spins up n goroutines that
+// saturate a CPU core each for the given duration (or until reset cancels
+// them). When the duration elapses the scenario falls back to STABLE.
 func (s *State) startCPUBurn(n int, duration time.Duration) {
 	s.mu.Lock()
 	if s.cpuCancel != nil {
@@ -182,11 +211,29 @@ func (s *State) startCPUBurn(n int, duration time.Duration) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	s.cpuCancel = cancel
+	s.cpuGen++
+	gen := s.cpuGen
+	s.scenario = ScenarioCPUBurn
 	s.mu.Unlock()
 
 	for i := 0; i < n; i++ {
 		go burnCPU(ctx)
 	}
+
+	go func() {
+		<-ctx.Done()
+		if ctx.Err() != context.DeadlineExceeded {
+			return // cancelled by reset() or a newer burn
+		}
+		s.mu.Lock()
+		if s.cpuGen == gen {
+			s.cpuCancel = nil
+			if s.scenario == ScenarioCPUBurn {
+				s.scenario = ScenarioStable
+			}
+		}
+		s.mu.Unlock()
+	}()
 }
 
 func burnCPU(ctx context.Context) {

@@ -99,6 +99,7 @@ func handleStatus(s *State, cfg Config) http.HandlerFunc {
 			"fileDescriptors": countOpenFDs(),
 			"goroutines":      runtime.NumGoroutine(),
 			"config": map[string]any{
+				"chaosEnabled":                 cfg.ChaosEnabled,
 				"chaosIntervalSeconds":         int(cfg.ChaosInterval.Seconds()),
 				"chaosStartupDelaySeconds":     int(cfg.ChaosStartupDelay.Seconds()),
 				"memoryChunkSize":              cfg.MemoryChunkSize,
@@ -144,7 +145,6 @@ func handleChaosOOM(s *State, cfg Config) http.HandlerFunc {
 func handleChaosCPU(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.startCPUBurn(cfg.CPUBurnThreads, cfg.CPUBurnDuration)
-		s.setScenario(ScenarioCPUBurn)
 		writeJSON(w, map[string]any{"status": "ok", "scenario": ScenarioCPUBurn})
 	}
 }

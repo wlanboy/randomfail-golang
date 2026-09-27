@@ -38,8 +38,7 @@ func handleSigterm(s *State, cfg Config) {
 	<-sigCh
 
 	log.Printf("received SIGTERM: marking unhealthy, delaying shutdown by %s", cfg.SigtermDelay)
-	s.setHealthy(false)
-	s.setReady(false)
+	s.beginShutdown()
 	time.Sleep(cfg.SigtermDelay)
 
 	log.Println("SIGTERM delay elapsed, exiting")

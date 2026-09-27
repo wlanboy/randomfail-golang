@@ -40,6 +40,11 @@ func runChaosCycle(s *State, cfg Config) {
 }
 
 func activateScenario(s *State, cfg Config, sc Scenario) {
+	// During the SIGTERM delay the cycle must neither revive the probes nor
+	// turn a graceful exit into a CRASH.
+	if s.isShuttingDown() {
+		return
+	}
 	s.reset()
 	log.Printf("chaos cycle: activating scenario %s", sc)
 
@@ -51,7 +56,6 @@ func activateScenario(s *State, cfg Config, sc Scenario) {
 		s.setScenario(ScenarioOOMKill)
 	case ScenarioCPUBurn:
 		s.startCPUBurn(cfg.CPUBurnThreads, cfg.CPUBurnDuration)
-		s.setScenario(ScenarioCPUBurn)
 	case ScenarioSlowDeath:
 		s.setHealthy(false)
 		s.setScenario(ScenarioSlowDeath)
