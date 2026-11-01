@@ -114,7 +114,7 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 
 | Endpunkt | Beschreibung |
 |---|---|
-| `GET /` | HTML-Seite mit aktueller Uhrzeit und aktivem Szenario. Jede dritte Anfrage gibt HTTP 500 zurück. |
+| `GET /` | HTML-Seite mit aktueller Uhrzeit und aktivem Szenario. Jede dritte Anfrage gibt HTTP 500 zurück (nur bei `CHAOS_ENABLED=true`). |
 | `GET /status` | JSON-Statusübersicht: aktives Szenario, Speicherverbrauch, FD-Anzahl, Konfiguration |
 
 ### Chaos-Kontrolle
@@ -137,7 +137,7 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `fail-cha
 
 | Variable | Default | Beschreibung |
 |---|---|---|
-| `CHAOS_ENABLED` | `true` | Automatischen Chaos-Zyklus aktivieren. Bei `false` startet der Service in einem reinen Init-Modus: `/healthz` und `/readyz` bleiben dauerhaft grün, kein Szenario wird automatisch ausgelöst. Manuelle `/chaos/*`-Endpunkte funktionieren unabhängig davon weiter. |
+| `CHAOS_ENABLED` | `true` | Automatischen Chaos-Zyklus aktivieren. Bei `false` startet der Service in einem reinen Init-Modus: `/healthz` und `/readyz` bleiben dauerhaft grün, `GET /` liefert immer HTTP 200, kein Szenario wird automatisch ausgelöst. Manuelle `/chaos/*`-Endpunkte funktionieren unabhängig davon weiter. |
 | `CHAOS_INTERVAL` | `300` | Sekunden zwischen automatischen Chaos-Zyklen |
 | `CHAOS_STARTUP_DELAY` | `10` | Sekunden Wartezeit nach dem Start vor dem ersten Zyklus |
 | `MEMORY_CHUNK_SIZE` | `1000000` | Bytes pro Speicher-Chunk im OOM-Szenario (1 MB) |

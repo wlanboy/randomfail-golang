@@ -15,7 +15,7 @@ func newMux(s *State, cfg Config) http.Handler {
 
 	mux.HandleFunc("GET /healthz", handleHealthz(s))
 	mux.HandleFunc("GET /readyz", handleReadyz(s))
-	mux.HandleFunc("GET /{$}", handleRoot(s))
+	mux.HandleFunc("GET /{$}", handleRoot(s, cfg))
 	mux.HandleFunc("GET /status", handleStatus(s, cfg))
 
 	mux.HandleFunc("POST /chaos/reset", handleChaosReset(s))
@@ -60,10 +60,12 @@ func handleReadyz(s *State) http.HandlerFunc {
 	}
 }
 
-func handleRoot(s *State) http.HandlerFunc {
+// handleRoot serves the HTML status page. With CHAOS_ENABLED every third
+// request fails with HTTP 500; with chaos disabled it always succeeds.
+func handleRoot(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n := s.nextRootRequestCount()
-		if n%3 == 0 {
+		if cfg.ChaosEnabled && n%3 == 0 {
 			http.Error(w, "simulated error", http.StatusInternalServerError)
 			return
 		}

@@ -48,7 +48,7 @@ func TestHandleReadyz(t *testing.T) {
 func TestHandleRootFailsEveryThirdRequest(t *testing.T) {
 	s := newState()
 	s.setScenario(ScenarioCPUBurn)
-	h := handleRoot(s)
+	h := handleRoot(s, Config{ChaosEnabled: true})
 
 	wantCodes := []int{http.StatusOK, http.StatusOK, http.StatusInternalServerError, http.StatusOK}
 	for i, want := range wantCodes {
@@ -59,6 +59,19 @@ func TestHandleRootFailsEveryThirdRequest(t *testing.T) {
 		}
 		if want == http.StatusOK && !strings.Contains(rec.Body.String(), string(ScenarioCPUBurn)) {
 			t.Errorf("request %d: body does not mention active scenario %s", i+1, ScenarioCPUBurn)
+		}
+	}
+}
+
+func TestHandleRootNeverFailsWithChaosDisabled(t *testing.T) {
+	s := newState()
+	h := handleRoot(s, Config{ChaosEnabled: false})
+
+	for i := 0; i < 6; i++ {
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("request %d: status = %d, want %d", i+1, rec.Code, http.StatusOK)
 		}
 	}
 }
