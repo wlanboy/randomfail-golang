@@ -12,6 +12,10 @@ spec:
       labels:
         app: {{ .Values.deploymentName }}
         sidecar.istio.io/inject: "true"
+      {{- with .Values.istio.terminationDrainDuration }}
+      annotations:
+        proxy.istio.io/config: {{ dict "terminationDrainDuration" . | toJson | squote }}
+      {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
@@ -49,12 +53,7 @@ spec:
           ports:
             - containerPort: {{ .Values.service.targetPort }}
           resources:
-            requests:
-              memory: "64Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"  # Bei OOM_PRESSURE wird der Pod hier gekillt
-              cpu: "200m"     # Bei CPU_SPIKE siehst du hier Throttling
+            {{- toYaml .Values.resources | nindent 12 }}
 
           startupProbe:
             httpGet:
@@ -67,7 +66,6 @@ spec:
             httpGet:
               path: /healthz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 10 # Etwas mehr Puffer für den App-Start
             periodSeconds: 5
             timeoutSeconds: 2 
             failureThreshold: 3
@@ -75,7 +73,6 @@ spec:
             httpGet:
               path: /readyz
               port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 2 
             failureThreshold: 3

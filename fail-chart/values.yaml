@@ -6,10 +6,19 @@ image:
 replicaCount: 1
 deploymentName: fail
 
-# Must be >= chaos.sigtermDelay for the SIGTERM_DELAY scenario to complete
+# Must be >= chaos.sigtermDelay plus a few seconds for draining in-flight
+# requests (srv.Shutdown) for the SIGTERM_DELAY scenario to complete
 # gracefully; set it lower than chaos.sigtermDelay to test what happens when
 # the grace period is undersized (kubelet SIGKILLs the process).
 terminationGracePeriodSeconds: 35
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"  # Bei OOM_KILL wird der Pod hier gekillt
+    cpu: "200m"      # Bei CPU_BURN siehst du hier Throttling
 
 service:
   name: fail-svc
@@ -31,6 +40,11 @@ chaos:
 istio:
   gatewayName: failgo-gw
   gatewayNamespace: "istio-ingress"
+  # Wie lange der Envoy-Sidecar nach SIGTERM weiter routet. Istio-Default sind
+  # 5s, d.h. der Sidecar wäre lange vor dem Ende von chaos.sigtermDelay weg.
+  # Sollte >= chaos.sigtermDelay sein. Leer lassen (""), um bewusst das
+  # Default-Verhalten (Sidecar stirbt vor der App) zu testen.
+  terminationDrainDuration: 35s
   hosts: 
     - fail.tp.lan
     - fail.gmk.lan
