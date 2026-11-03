@@ -71,7 +71,7 @@ Jeder HTTP-Request wird künstlich um eine konfigurierbare Anzahl von Sekunden v
 ---
 
 ### SIGTERM_DELAY – Verzögerter Graceful Shutdown
-Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling Update oder Scale-Down) wartet der Service für eine konfigurierbare Zeit, bevor er sich beendet.
+Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling Update oder Scale-Down) wartet der Service für eine konfigurierbare Zeit, bevor er sich beendet. Danach fährt er den HTTP-Server per `srv.Shutdown` geordnet herunter: noch laufende Requests dürfen bis zu 10 s fertig werden, erst dann werden verbleibende Verbindungen geschlossen.
 
 **Kubernetes-Reaktion:**
 - Kubernetes wartet maximal `terminationGracePeriodSeconds` auf den Prozess
@@ -79,6 +79,8 @@ Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling
 - Testet, ob `terminationGracePeriodSeconds` ausreichend dimensioniert ist
 - Während der Wartezeit werden Health-Probes auf `unhealthy` gesetzt, um Traffic-Routing zu stoppen. Weder der Chaos-Zyklus noch `/chaos/reset` können sie in dieser Phase wieder auf grün setzen. Die übrigen `/chaos/*`-Endpunkte antworten in dieser Phase mit HTTP 409, und ein `/chaos/crash` macht aus dem Exit 0 keinen Exit 1
 - Sichtbar in: `kubectl describe pod` → `Terminating` Status
+
+**Istio-Sidecar:** Der Envoy-Proxy bekommt beim Pod-Shutdown ebenfalls SIGTERM und routet nach Istios Default-Drain (5 s) nicht mehr – lange vor dem Ende von `SIGTERM_DELAY`. Das Chart setzt deshalb `proxy.istio.io/config: '{"terminationDrainDuration":"35s"}'` (Wert: `istio.terminationDrainDuration`). Mit `--set istio.terminationDrainDuration=` entfällt die Annotation, um genau dieses Fehlverhalten bewusst zu testen.
 
 ---
 
