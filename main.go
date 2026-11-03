@@ -19,9 +19,14 @@ func main() {
 	cfg := loadConfig()
 	s := newState()
 
+	// No WriteTimeout: SLOW_RESPONSE deliberately holds responses for
+	// SLOW_RESPONSE_DELAY, and a write deadline would cut that short.
 	srv := &http.Server{
-		Addr:    ":8080",
-		Handler: newMux(s, cfg),
+		Addr:              ":8080",
+		Handler:           newMux(s, cfg),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go runChaosCycle(s, cfg)
