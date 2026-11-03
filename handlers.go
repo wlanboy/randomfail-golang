@@ -21,9 +21,9 @@ func newMux(s *State, cfg Config) http.Handler {
 	mux.HandleFunc("POST /chaos/reset", handleChaosReset(s))
 	mux.HandleFunc("POST /chaos/oom", handleChaosOOM(s, cfg))
 	mux.HandleFunc("POST /chaos/cpu", handleChaosCPU(s, cfg))
-	mux.HandleFunc("POST /chaos/crash", handleChaosCrash())
-	mux.HandleFunc("POST /chaos/unhealthy", handleChaosUnhealthy(s))
-	mux.HandleFunc("POST /chaos/slow", handleChaosSlow(s))
+	mux.HandleFunc("POST /chaos/crash", handleChaosCrash(s, cfg))
+	mux.HandleFunc("POST /chaos/unhealthy", handleChaosUnhealthy(s, cfg))
+	mux.HandleFunc("POST /chaos/slow", handleChaosSlow(s, cfg))
 	mux.HandleFunc("POST /chaos/flap", handleChaosFlap(s, cfg))
 
 	return slowResponseMiddleware(s, cfg, mux)
@@ -125,71 +125,92 @@ func countOpenFDs() int {
 
 func handleChaosReset(s *State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.reset()
-		writeJSON(w, map[string]any{"status": "reset", "scenario": ScenarioStable})
+		resetScenario(s)
+		writeJSON(w, map[string]any{"status": "reset", "scenario": s.getScenario()})
 	}
+}
+
+// writeChaosResult answers a /chaos/* request: 200 with the now active
+// scenario, or 409 if the switch was refused because of a SIGTERM shutdown.
+func writeChaosResult(w http.ResponseWriter, s *State, ok bool) {
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{"status": "shutting down", "scenario": s.getScenario()})
+		return
+	}
+	writeJSON(w, map[string]any{"status": "ok", "healthy": s.isHealthy(), "scenario": s.getScenario()})
 }
 
 func handleChaosOOM(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.isShuttingDown() {
+			writeChaosResult(w, s, false)
+			return
+		}
 		const immediateBytes = 100_000_000 // 100 MB, per readme.md
 		chunk := make([]byte, immediateBytes)
 		for i := range chunk {
 			chunk[i] = 1
 		}
-		s.appendMemChunk(chunk)
-		s.startOOMGrowth(cfg.MemoryChunkSize)
-		s.setScenario(ScenarioOOMKill)
-		writeJSON(w, map[string]any{"status": "ok", "scenario": ScenarioOOMKill})
+		// Hold activateMu across activation and the extra ballast so a
+		// concurrent switch can't reset in between and leave 100 MB behind.
+		s.activateMu.Lock()
+		ok := activateScenarioLocked(s, cfg, ScenarioOOMKill)
+		if ok {
+			s.appendMemChunk(chunk)
+		}
+		s.activateMu.Unlock()
+		writeChaosResult(w, s, ok)
 	}
 }
 
 func handleChaosCPU(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.startCPUBurn(cfg.CPUBurnThreads, cfg.CPUBurnDuration)
-		writeJSON(w, map[string]any{"status": "ok", "scenario": ScenarioCPUBurn})
+		writeChaosResult(w, s, activateScenario(s, cfg, ScenarioCPUBurn))
 	}
 }
 
-func handleChaosCrash() http.HandlerFunc {
+func handleChaosCrash(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.isShuttingDown() {
+			writeChaosResult(w, s, false)
+			return
+		}
 		writeJSON(w, map[string]any{"status": "crashing", "scenario": ScenarioCrash})
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			log.Println("CRASH scenario triggered: exiting immediately")
-			os.Exit(1)
+			// Re-checked here: SIGTERM may have arrived after the response.
+			if !activateScenario(s, cfg, ScenarioCrash) {
+				log.Println("CRASH refused: SIGTERM shutdown in progress")
+			}
 		}()
 	}
 }
 
-func handleChaosUnhealthy(s *State) http.HandlerFunc {
+// handleChaosUnhealthy toggles between SLOW_DEATH and a clean STABLE state.
+func handleChaosUnhealthy(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		healthy := s.toggleHealthy()
-		if !healthy {
-			s.setScenario(ScenarioSlowDeath)
-		} else {
-			s.setScenario(ScenarioStable)
+		next := ScenarioSlowDeath
+		if s.getScenario() == ScenarioSlowDeath {
+			next = ScenarioStable
 		}
-		writeJSON(w, map[string]any{"status": "ok", "healthy": healthy, "scenario": s.getScenario()})
+		writeChaosResult(w, s, activateScenario(s, cfg, next))
 	}
 }
 
-func handleChaosSlow(s *State) http.HandlerFunc {
+func handleChaosSlow(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.setSlowResponse(true)
-		s.setScenario(ScenarioSlowResponse)
-		writeJSON(w, map[string]any{"status": "ok", "scenario": ScenarioSlowResponse})
+		writeChaosResult(w, s, activateScenario(s, cfg, ScenarioSlowResponse))
 	}
 }
 
 func handleChaosFlap(s *State, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.startFlap(cfg.ReadinessFlapInterval)
-		s.setScenario(ScenarioReadinessFlap)
-		writeJSON(w, map[string]any{"status": "ok", "scenario": ScenarioReadinessFlap})
+		writeChaosResult(w, s, activateScenario(s, cfg, ScenarioReadinessFlap))
 	}
 }
 

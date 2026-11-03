@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +23,10 @@ const (
 
 // State holds all mutable chaos state, guarded by mu where noted.
 type State struct {
+	// activateMu serializes scenario switches (chaos cycle and /chaos/*), so
+	// a reset() of one switch can't interleave with the start of another.
+	activateMu sync.Mutex
+
 	mu           sync.Mutex
 	scenario     Scenario
 	healthy      bool
@@ -118,6 +124,24 @@ func (s *State) beginShutdown() {
 	s.mu.Lock()
 	s.shuttingDown = true
 	s.mu.Unlock()
+}
+
+// exitFunc is os.Exit, swappable in tests.
+var exitFunc = os.Exit
+
+// crash exits the process with code 1 unless a SIGTERM shutdown is in
+// progress, in which case it returns false so the graceful exit 0 stays
+// intact. mu is held across the exit so beginShutdown can't slip in between
+// the check and the exit.
+func (s *State) crash() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shuttingDown {
+		return false
+	}
+	log.Println("CRASH scenario triggered: exiting immediately")
+	exitFunc(1)
+	return true
 }
 
 func (s *State) isShuttingDown() bool {

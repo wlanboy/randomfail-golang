@@ -22,8 +22,7 @@ func testCfg() Config {
 	}
 }
 
-// ScenarioCrash is intentionally not exercised here: activateScenario calls
-// os.Exit(1) for it, which would kill the test process.
+// ScenarioCrash is covered separately with a stubbed exitFunc.
 func TestActivateScenario(t *testing.T) {
 	cfg := testCfg()
 

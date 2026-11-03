@@ -174,7 +174,7 @@ func TestHandleChaosCPU(t *testing.T) {
 
 func TestHandleChaosUnhealthy(t *testing.T) {
 	s := newState()
-	h := handleChaosUnhealthy(s)
+	h := handleChaosUnhealthy(s, testCfg())
 
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodPost, "/chaos/unhealthy", nil))
@@ -197,7 +197,7 @@ func TestHandleChaosUnhealthy(t *testing.T) {
 
 func TestHandleChaosSlow(t *testing.T) {
 	s := newState()
-	h := handleChaosSlow(s)
+	h := handleChaosSlow(s, testCfg())
 
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodPost, "/chaos/slow", nil))
@@ -263,5 +263,141 @@ func TestSlowResponseMiddleware(t *testing.T) {
 	}
 	if elapsed < cfg.SlowResponseDelay {
 		t.Errorf("request took %s with SLOW_RESPONSE active, want >= %s", elapsed, cfg.SlowResponseDelay)
+	}
+}
+
+// stubExit replaces exitFunc for the test and returns a channel receiving
+// every exit code.
+func stubExit(t *testing.T) chan int {
+	t.Helper()
+	codes := make(chan int, 4)
+	orig := exitFunc
+	exitFunc = func(code int) { codes <- code }
+	t.Cleanup(func() { exitFunc = orig })
+	return codes
+}
+
+func post(h http.HandlerFunc, path string) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, path, nil))
+	return rec
+}
+
+func TestManualScenariosDoNotStack(t *testing.T) {
+	s := newState()
+	defer s.reset()
+	cfg := testCfg()
+
+	post(handleChaosSlow(s, cfg), "/chaos/slow")
+	post(handleChaosFlap(s, cfg), "/chaos/flap")
+
+	if got := s.getScenario(); got != ScenarioReadinessFlap {
+		t.Errorf("getScenario() = %s, want %s", got, ScenarioReadinessFlap)
+	}
+	if s.isSlowResponse() {
+		t.Error("isSlowResponse() = true after /chaos/flap, want previous SLOW_RESPONSE cleared")
+	}
+}
+
+func TestUnhealthyToggleStopsOOMGrowth(t *testing.T) {
+	s := newState()
+	defer s.reset()
+	cfg := testCfg()
+
+	post(handleChaosOOM(s, cfg), "/chaos/oom")
+	post(handleChaosUnhealthy(s, cfg), "/chaos/unhealthy")
+	if got := s.getScenario(); got != ScenarioSlowDeath {
+		t.Fatalf("getScenario() = %s, want %s", got, ScenarioSlowDeath)
+	}
+	if s.oomRunning || s.memBallastBytes() != 0 {
+		t.Error("OOM growth still active after switching to SLOW_DEATH")
+	}
+
+	post(handleChaosUnhealthy(s, cfg), "/chaos/unhealthy")
+	if got := s.getScenario(); got != ScenarioStable || !s.isHealthy() {
+		t.Errorf("after second toggle: scenario=%s healthy=%v, want STABLE/true", got, s.isHealthy())
+	}
+}
+
+func TestChaosEndpointsRejectedDuringShutdown(t *testing.T) {
+	codes := stubExit(t)
+	s := newState()
+	defer s.reset()
+	cfg := testCfg()
+	s.beginShutdown()
+
+	handlers := map[string]http.HandlerFunc{
+		"/chaos/oom":       handleChaosOOM(s, cfg),
+		"/chaos/cpu":       handleChaosCPU(s, cfg),
+		"/chaos/crash":     handleChaosCrash(s, cfg),
+		"/chaos/unhealthy": handleChaosUnhealthy(s, cfg),
+		"/chaos/slow":      handleChaosSlow(s, cfg),
+		"/chaos/flap":      handleChaosFlap(s, cfg),
+	}
+	for path, h := range handlers {
+		if rec := post(h, path); rec.Code != http.StatusConflict {
+			t.Errorf("%s during shutdown: status = %d, want %d", path, rec.Code, http.StatusConflict)
+		}
+	}
+	if got := s.getScenario(); got != ScenarioStable {
+		t.Errorf("getScenario() = %s, want STABLE (nothing activated)", got)
+	}
+
+	select {
+	case code := <-codes:
+		t.Errorf("exit(%d) called during shutdown, want no exit", code)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestChaosCrashRefusedIfSigtermArrivesAfterResponse(t *testing.T) {
+	codes := stubExit(t)
+	s := newState()
+	defer s.reset()
+
+	rec := post(handleChaosCrash(s, testCfg()), "/chaos/crash")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	s.beginShutdown() // inside the 50 ms window before the exit
+
+	select {
+	case code := <-codes:
+		t.Errorf("exit(%d) called after SIGTERM, want graceful shutdown untouched", code)
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestChaosCrashExitsWithCode1(t *testing.T) {
+	codes := stubExit(t)
+	s := newState()
+	defer s.reset()
+
+	post(handleChaosCrash(s, testCfg()), "/chaos/crash")
+
+	select {
+	case code := <-codes:
+		if code != 1 {
+			t.Errorf("exit code = %d, want 1", code)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("exit not called after /chaos/crash")
+	}
+}
+
+func TestChaosResetAllowedDuringShutdown(t *testing.T) {
+	s := newState()
+	cfg := testCfg()
+	activateScenario(s, cfg, ScenarioCPUBurn)
+	s.beginShutdown()
+
+	if rec := post(handleChaosReset(s), "/chaos/reset"); rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if s.cpuCancel != nil {
+		t.Error("CPU burn still running after reset")
+	}
+	if s.isHealthy() || s.isReady() {
+		t.Error("reset revived probes during shutdown")
 	}
 }

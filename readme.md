@@ -77,7 +77,7 @@ Beim Empfang des SIGTERM-Signals (ausgelöst durch `kubectl delete pod`, Rolling
 - Kubernetes wartet maximal `terminationGracePeriodSeconds` auf den Prozess
 - Nach Ablauf der Frist: SIGKILL (harter Abbruch)
 - Testet, ob `terminationGracePeriodSeconds` ausreichend dimensioniert ist
-- Während der Wartezeit werden Health-Probes auf `unhealthy` gesetzt, um Traffic-Routing zu stoppen. Weder der Chaos-Zyklus noch `/chaos/reset` können sie in dieser Phase wieder auf grün setzen
+- Während der Wartezeit werden Health-Probes auf `unhealthy` gesetzt, um Traffic-Routing zu stoppen. Weder der Chaos-Zyklus noch `/chaos/reset` können sie in dieser Phase wieder auf grün setzen. Die übrigen `/chaos/*`-Endpunkte antworten in dieser Phase mit HTTP 409, und ein `/chaos/crash` macht aus dem Exit 0 keinen Exit 1
 - Sichtbar in: `kubectl describe pod` → `Terminating` Status
 
 ---
@@ -125,9 +125,11 @@ Der Service läuft ohne Fehler. Dient als Ruhephase zwischen den Chaos-Zyklen.
 | `POST /chaos/oom` | OOM_KILL | Fügt sofort 100 MB Speicherdruck hinzu |
 | `POST /chaos/cpu` | CPU_BURN | Startet CPU-Burn-Threads für konfigurierte Dauer |
 | `POST /chaos/crash` | CRASH | Beendet den Prozess sofort mit Exit Code 1 |
-| `POST /chaos/unhealthy` | SLOW_DEATH | Schaltet den Health-Status um (Toggle) |
+| `POST /chaos/unhealthy` | SLOW_DEATH | Schaltet zwischen SLOW_DEATH und STABLE um (Toggle) |
 | `POST /chaos/slow` | SLOW_RESPONSE | Aktiviert künstliche Request-Verzögerung |
 | `POST /chaos/flap` | READINESS_FLAP | Startet das intermittierende Readiness-Toggling |
+
+Es ist immer genau ein Szenario aktiv. Jeder Endpunkt setzt wie der Chaos-Zyklus zuerst alle laufenden Szenarien zurück, z. B. beendet `/chaos/flap` eine vorher aktivierte Verzögerung aus `/chaos/slow`. `/chaos/unhealthy` schaltet zwischen SLOW_DEATH und einem sauberen STABLE um.
 
 ---
 
