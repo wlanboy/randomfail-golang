@@ -113,3 +113,63 @@ func TestLoadConfigFromEnv(t *testing.T) {
 		t.Errorf("loadConfig() = %+v, want %+v", cfg, want)
 	}
 }
+
+func TestEnvIntNegativeFallsBackToDefault(t *testing.T) {
+	t.Setenv("RF_TEST_INT", "-1")
+	if v := envInt("RF_TEST_INT", 42); v != 42 {
+		t.Errorf("envInt() with negative value = %d, want default 42", v)
+	}
+}
+
+func TestEnvIntZeroAllowed(t *testing.T) {
+	t.Setenv("RF_TEST_INT", "0")
+	if v := envInt("RF_TEST_INT", 42); v != 0 {
+		t.Errorf("envInt() with 0 = %d, want 0", v)
+	}
+}
+
+func TestEnvPositiveIntRejectsZeroAndNegative(t *testing.T) {
+	for _, in := range []string{"0", "-5"} {
+		t.Setenv("RF_TEST_INT", in)
+		if v := envPositiveInt("RF_TEST_INT", 42); v != 42 {
+			t.Errorf("envPositiveInt(%q) = %d, want default 42", in, v)
+		}
+	}
+}
+
+func TestEnvSecondsUnitSuffixFallsBackToDefault(t *testing.T) {
+	t.Setenv("RF_TEST_SECONDS", "5m")
+	if v := envSeconds("RF_TEST_SECONDS", 300); v != 300*time.Second {
+		t.Errorf("envSeconds(\"5m\") = %s, want default 300s", v)
+	}
+}
+
+func TestLoadConfigRejectsNonPositiveIntervals(t *testing.T) {
+	t.Setenv("CHAOS_INTERVAL", "0")
+	t.Setenv("READINESS_FLAP_INTERVAL", "-1")
+	t.Setenv("CPU_BURN_THREADS", "0")
+	t.Setenv("MEMORY_CHUNK_SIZE", "0")
+	t.Setenv("CPU_BURN_DURATION", "0")
+	t.Setenv("SIGTERM_DELAY", "0")
+
+	cfg := loadConfig()
+
+	if cfg.ChaosInterval != 300*time.Second {
+		t.Errorf("ChaosInterval = %s, want default 300s", cfg.ChaosInterval)
+	}
+	if cfg.ReadinessFlapInterval != 20*time.Second {
+		t.Errorf("ReadinessFlapInterval = %s, want default 20s", cfg.ReadinessFlapInterval)
+	}
+	if cfg.CPUBurnThreads != 2 {
+		t.Errorf("CPUBurnThreads = %d, want default 2", cfg.CPUBurnThreads)
+	}
+	if cfg.MemoryChunkSize != 1_000_000 {
+		t.Errorf("MemoryChunkSize = %d, want default 1000000", cfg.MemoryChunkSize)
+	}
+	if cfg.CPUBurnDuration != 120*time.Second {
+		t.Errorf("CPUBurnDuration = %s, want default 120s", cfg.CPUBurnDuration)
+	}
+	if cfg.SigtermDelay != 0 {
+		t.Errorf("SigtermDelay = %s, want 0 (zero delay is allowed)", cfg.SigtermDelay)
+	}
+}

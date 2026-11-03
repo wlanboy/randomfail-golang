@@ -147,6 +147,8 @@ Alle Parameter werden über Umgebungsvariablen gesetzt (Helm-Values in `fail-cha
 | `SIGTERM_DELAY` | `30` | Sekunden Wartezeit nach SIGTERM vor dem Prozess-Exit |
 | `READINESS_FLAP_INTERVAL` | `20` | Sekunden zwischen Readiness-Toggles im READINESS_FLAP-Szenario (muss > `periodSeconds × failureThreshold` der Readiness-Probe sein) |
 
+Zeitwerte sind ganze Sekunden ohne Einheit (`300`, nicht `5m`). Ungültige Werte werden mit einer Warnung im Log ignoriert, dann gilt der Default. `CHAOS_INTERVAL`, `READINESS_FLAP_INTERVAL`, `CPU_BURN_DURATION`, `CPU_BURN_THREADS` und `MEMORY_CHUNK_SIZE` müssen > 0 sein; die übrigen Werte dürfen `0`, aber nicht negativ sein.
+
 ---
 
 ## Lokaler Betrieb
