@@ -31,8 +31,10 @@ func main() {
 
 	go runChaosCycle(s, cfg)
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM)
 	shutdownDone := make(chan struct{})
-	go handleSigterm(s, cfg, srv, shutdownDone)
+	go handleSigterm(s, cfg, srv, sigCh, shutdownDone)
 
 	log.Printf("randomfail listening on %s (chaosEnabled=%t, chaosInterval=%s, startupDelay=%s)",
 		srv.Addr, cfg.ChaosEnabled, cfg.ChaosInterval, cfg.ChaosStartupDelay)
@@ -49,12 +51,11 @@ func main() {
 // the service immediately marks itself unhealthy/not-ready (to stop new
 // traffic), waits SIGTERM_DELAY seconds to simulate a slow graceful shutdown,
 // and then shuts the HTTP server down gracefully so in-flight requests can
-// finish instead of being cut off.
-func handleSigterm(s *State, cfg Config, srv *http.Server, done chan<- struct{}) {
+// finish instead of being cut off. sigCh is passed in (main registers it via
+// signal.Notify) so tests can trigger the shutdown without a real signal.
+func handleSigterm(s *State, cfg Config, srv *http.Server, sigCh <-chan os.Signal, done chan<- struct{}) {
 	defer close(done)
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM)
 	<-sigCh
 
 	log.Printf("received SIGTERM: marking unhealthy, delaying shutdown by %s", cfg.SigtermDelay)
